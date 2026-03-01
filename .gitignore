@@ -15,13 +15,6 @@ saved_maps/
 *.pgm
 *.yaml
 
-# External Repositories (These should be cloned via a setup script, not committed here)
-src/isaac_ros_common/
-src/isaac_ros_nvblox/
-src/isaac_ros_image_pipeline/
-src/isaac_ros_compression/
-src/realsense-ros/
-
 # OS/Editor generated files
 .vscode/
 .DS_Store
