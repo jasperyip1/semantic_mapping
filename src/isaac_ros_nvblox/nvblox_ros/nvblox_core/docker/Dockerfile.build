@@ -1,0 +1,17 @@
+ARG BASE_IMAGE=nvblox_deps
+
+FROM $BASE_IMAGE
+ARG CMAKE_ARGS=""
+
+SHELL ["/bin/bash", "-c"]
+
+# Copy over nvblox
+COPY . /nvblox
+
+# Build the standalone library. Note that 'bash -i' is needed to pickup the custom CMAKE_PREFIX_PATH
+# defined in bashrc
+RUN cd nvblox && mkdir build && cd build && \
+    bash -ic "cmake ..  ${CMAKE_ARGS} -DCMAKE_VERBOSE_MAKEFILE=1 && make -j8"
+
+# Build our python packages.
+RUN pip install --ignore-installed nvblox/python/evaluation nvblox/python/scripts nvblox/python/common
