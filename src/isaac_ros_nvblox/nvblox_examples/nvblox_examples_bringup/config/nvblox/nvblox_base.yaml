@@ -18,7 +18,7 @@
     update_esdf_rate_hz: 10.0
     publish_layer_rate_hz: 5.0
     publish_debug_vis_rate_hz: 2.0
-    decay_tsdf_rate_hz: 5.0
+    decay_tsdf_rate_hz: 0.0
     decay_dynamic_occupancy_rate_hz: 10.0
     clear_map_outside_radius_rate_hz: 1.0
 
