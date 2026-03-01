@@ -2,403 +2,214 @@
 
 Live semantic mapping and localization using **Isaac ROS 3.2**, **nvblox**, and an **Intel RealSense D435i** on a **Jetson Orin Nano 8GB**.
 
-> ⚠️ This guide is specifically for **Isaac ROS 3.2 / ROS 2 Humble / Ubuntu 22.04 / JetPack 6.x**. The current Isaac ROS documentation (4.x) targets Ubuntu 24.04 and Jazzy — do not follow those instructions on this hardware.
+> ⚠️ This guide is specifically for **Isaac ROS 3.2 / ROS 2 Humble / Ubuntu 22.04 / JetPack 6.x**. The current Isaac ROS docs (4.x) target Ubuntu 24.04/Jazzy — do not follow those on this hardware. `isaac-ros activate` and `isaac-ros-cli` do **not exist** on this setup — use `run_dev.sh` instead.
 
 ---
 
-## Table of Contents
-
-1. [Hardware Requirements](#1-hardware-requirements)
-2. [Software Version Reference](#2-software-version-reference)
-3. [Verify JetPack Version](#3-verify-jetpack-version)
-4. [Set Maximum Performance Mode](#4-set-maximum-performance-mode)
-5. [Install Docker Engine](#5-install-docker-engine)
-6. [Set Up SSD and Migrate Docker Storage](#6-set-up-ssd-and-migrate-docker-storage)
-7. [Generate CDI Spec](#7-generate-cdi-spec)
-8. [Install pva-allow-2](#8-install-pva-allow-2)
-9. [Add the Isaac ROS Apt Repository](#9-add-the-isaac-ros-apt-repository)
-10. [Install Git LFS](#10-install-git-lfs)
-11. [Create the Workspace](#11-create-the-workspace)
-12. [Clone Required Repositories](#12-clone-required-repositories)
-13. [Set Up RealSense udev Rules](#13-set-up-realsense-udev-rules)
-14. [Configure Isaac ROS Container for RealSense](#14-configure-isaac-ros-container-for-realsense)
-15. [Patch Dockerfile.realsense for IMU Support](#15-patch-dockerfilerealsense-for-imu-support)
-16. [Enter the Docker Container](#16-enter-the-docker-container)
-17. [Inside Container: Fix Environment](#17-inside-container-fix-environment)
-18. [Inside Container: Install All Dependencies](#18-inside-container-install-all-dependencies)
-19. [Inside Container: Build the Workspace](#19-inside-container-build-the-workspace)
-20. [Run the nvblox Quickstart Demo](#20-run-the-nvblox-quickstart-demo)
-21. [Run Live RealSense Mapping](#21-run-live-realsense-mapping)
-22. [Set Up Foxglove Visualization](#22-set-up-foxglove-visualization)
-23. [Saving Maps and Recording Bags](#23-saving-maps-and-recording-bags)
-24. [Known Bugs and Fixes](#24-known-bugs-and-fixes)
-25. [Every Session Checklist](#25-every-session-checklist)
-
----
-
-## 1. Hardware Requirements
-
-| Component | Requirement |
-|---|---|
-| Board | Jetson Orin Nano **8GB** (4GB is not recommended — insufficient RAM) |
-| Storage | NVMe SSD (strongly recommended — eMMC is too slow and small) |
-| Camera | Intel RealSense **D435i** or **D455** (D415 is not supported) |
-| USB | USB **3.0** port and cable (required for full camera resolution/framerate) |
-| Network | WiFi or Ethernet (for Foxglove remote visualization) |
-
----
-
-## 2. Software Version Reference
+## Software Version Reference
 
 | Software | Version |
 |---|---|
-| JetPack | 6.1 or 6.2 (R36, REVISION: 4.0) |
+| JetPack | 6.1 or 6.2 — `R36 (release), REVISION: 4.0` |
 | Ubuntu | 22.04 LTS (Jammy) |
 | Isaac ROS | **3.2** (`release-3.2` branch) |
 | ROS 2 | **Humble** |
 | Docker Engine | 27.2.0 or newer |
 | RealSense Firmware | **5.13.0.50** |
 | librealsense SDK | **v2.55.1** |
-| realsense-ros driver | **4.51.1-isaac** |
+| realsense-ros | **4.51.1-isaac** |
 
-> ⚠️ The current Isaac ROS 4.x docs reference firmware 5.16.0.1 and librealsense 2.56.3 — those are **wrong for Isaac ROS 3.2**. The versions in this table are the correct ones for this setup.
-
----
-
-## 3. Verify JetPack Version
-
-```bash
-cat /etc/nv_tegra_release
-```
-
-Output must include `R36 (release), REVISION: 4.0`. If it shows `REVISION: 3.0` you are on JetPack 6.0 (Isaac ROS 3.1 only) and must update before continuing.
+> ⚠️ Isaac ROS 4.x docs reference firmware 5.16.0.1 and librealsense 2.56.3 — those are wrong for this setup.
 
 ---
 
-## 4. Set Maximum Performance Mode
+## 1. Host Setup (One Time)
 
+### Performance Mode
 ```bash
 sudo /usr/bin/jetson_clocks
 sudo /usr/sbin/nvpmodel -m 0
 ```
 
----
-
-## 5. Install Docker Engine
-
-Follow the [official Docker installation guide for Ubuntu](https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository), then additionally install the buildx plugin:
-
+### Docker Engine (27.2.0+)
+Follow the [official Docker install guide](https://docs.docker.com/engine/install/ubuntu/), then:
 ```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
-  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-  https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
-
-# Add your user to the docker group
+sudo apt-get install -y docker-buildx-plugin
 sudo usermod -aG docker $USER
 newgrp docker
-
-# Verify version — must be 27.2.0+
-docker --version
+docker --version  # must be 27.2.0+
 ```
 
----
-
-## 6. Set Up SSD and Migrate Docker Storage
-
-If your SSD is not yet formatted and mounted, follow the [NVIDIA Isaac ROS Jetson Storage Setup guide](https://nvidia-isaac-ros.github.io/getting_started/hardware_setup/compute/jetson_storage.html).
-
-This project assumes your SSD is mounted at `/ssd/`.
-
-Migrate Docker's storage to the SSD to avoid filling up eMMC:
-
+### Migrate Docker to SSD
 ```bash
 sudo systemctl stop docker
-
 sudo mkdir -p /ssd/docker
 sudo rsync -axPS /var/lib/docker/ /ssd/docker/
-
 sudo tee /etc/docker/daemon.json > /dev/null <<'EOF'
 {
     "runtimes": {
-        "nvidia": {
-            "path": "nvidia-container-runtime",
-            "runtimeArgs": []
-        }
+        "nvidia": { "path": "nvidia-container-runtime", "runtimeArgs": [] }
     },
     "default-runtime": "nvidia",
     "data-root": "/ssd/docker"
 }
 EOF
-
 sudo mv /var/lib/docker /var/lib/docker.old
-sudo systemctl daemon-reload
-sudo systemctl restart docker
-
-# Verify
-docker info | grep "Docker Root Dir"
-# Expected: Docker Root Dir: /ssd/docker
+sudo systemctl daemon-reload && sudo systemctl restart docker
 ```
 
----
-
-## 7. Generate CDI Spec
-
-Required for Docker containers to access GPU and PVA hardware:
-
+### CDI Spec + pva-allow-2
 ```bash
 sudo nvidia-ctk cdi generate --mode=csv --output=/etc/cdi/nvidia.yaml
-```
 
----
-
-## 8. Install pva-allow-2
-
-Required for Isaac ROS 3.2 VPI support:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y software-properties-common
 sudo apt-key adv --fetch-key https://repo.download.nvidia.com/jetson/jetson-ota-public.asc
 sudo add-apt-repository 'deb https://repo.download.nvidia.com/jetson/common r36.4 main'
-sudo apt-get update
-sudo apt-get install -y pva-allow-2
+sudo apt-get update && sudo apt-get install -y pva-allow-2
 ```
 
----
-
-## 9. Add the Isaac ROS Apt Repository
-
-> ⚠️ **Bug warning:** The correct repository path is `/isaac-ros/release-3` — NOT `/isaac-ros/ubuntu/main`. If you see a 404 error for `ubuntu/main`, remove that stale entry first:
-> ```bash
-> sudo rm -f /etc/apt/sources.list.d/isaac-ros.list
-> grep -r "isaac.download.nvidia.com" /etc/apt/  # should return nothing
-> ```
-
-Add the correct repository:
-
+### Isaac ROS Apt Repository
 ```bash
 k="/usr/share/keyrings/nvidia-isaac-ros.gpg"
 curl -fsSL https://isaac.download.nvidia.com/isaac-ros/repos.key | \
   sudo gpg --dearmor | sudo tee -a $k > /dev/null
 
-# Note: do NOT add "main" at the end - the repo uses a flat structure
 sudo tee /etc/apt/sources.list.d/nvidia-isaac-ros.list > /dev/null <<'EOF'
 deb [signed-by=/usr/share/keyrings/nvidia-isaac-ros.gpg] https://isaac.download.nvidia.com/isaac-ros/release-3 jammy/
 EOF
-
 sudo apt-get update
-# Verify: should see "Hit: ... isaac.download.nvidia.com/isaac-ros/release-3 jammy InRelease" with no errors
 ```
 
-> ⚠️ **Note:** `isaac-ros-cli` (the `isaac-ros activate` command) does **not exist** for Ubuntu 22.04/Humble. That CLI is only available for Isaac ROS 4.x on Ubuntu 24.04. On this setup, the container is launched with `./scripts/run_dev.sh` instead.
+> ⚠️ Do NOT add `main` at the end — the repo uses a flat structure. If you see a 404 for `/ubuntu/main`, remove that stale file: `sudo rm -f /etc/apt/sources.list.d/isaac-ros.list`
 
----
-
-## 10. Install Git LFS
-
+### Workspace and Environment
 ```bash
-sudo apt-get install -y git-lfs
-git lfs install --skip-repo
-```
-
----
-
-## 11. Create the Workspace
-
-```bash
+sudo apt-get install -y git-lfs && git lfs install --skip-repo
 mkdir -p /ssd/workspaces/semantic_mapping/src
 
 echo 'export ISAAC_ROS_WS="/ssd/workspaces/semantic_mapping"' >> ~/.bashrc
 echo 'xhost +local:root' >> ~/.bashrc
 echo 'export DISPLAY=:0' >> ~/.bashrc
 echo 'export ROS_DOMAIN_ID=1' >> ~/.bashrc
-
 source ~/.bashrc
-
-# Verify
-echo $ISAAC_ROS_WS
-# Expected: /ssd/workspaces/semantic_mapping
 ```
 
 ---
 
-## 12. Clone Required Repositories
-
-All clones go into `${ISAAC_ROS_WS}/src` and must use the `release-3.2` branch:
+## 2. Clone Repositories
 
 ```bash
 cd ${ISAAC_ROS_WS}/src
 
-# Core - required first
 git clone -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_common.git isaac_ros_common
 
-# nvblox - initialize submodules or nvblox_core will be missing
 git clone -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_nvblox.git isaac_ros_nvblox
-cd isaac_ros_nvblox
-git submodule update --init --recursive
-cd ..
+cd isaac_ros_nvblox && git submodule update --init --recursive && cd ..
 
-# Additional dependencies
 git clone -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_image_pipeline.git isaac_ros_image_pipeline
 git clone -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_compression.git isaac_ros_compression
-
-# RealSense driver - pinned to exact version
+git clone -b release-3.2 https://github.com/NVIDIA-ISAAC-ROS/isaac_ros_visual_slam.git isaac_ros_visual_slam
 git clone https://github.com/IntelRealSense/realsense-ros.git -b 4.51.1
 ```
 
-> ⚠️ **Critical:** Do NOT clone `isaac_ros_nitros` from source. Install it via apt inside the container instead. Building it from source causes a `magic_enum::magic_enum` CMake error that is very difficult to resolve.
+> ⚠️ Do NOT clone `isaac_ros_nitros` from source — it causes a `magic_enum::magic_enum` CMake error. Install via apt inside the container instead.
 
 ---
 
-## 13. Set Up RealSense udev Rules
+## 3. RealSense Setup
 
-Run with the camera **unplugged**:
-
+### udev Rules (camera unplugged)
 ```bash
-wget https://raw.githubusercontent.com/IntelRealSense/librealsense/v2.56.3/config/99-realsense-libusb.rules && \
-sudo mv 99-realsense-libusb.rules /etc/udev/rules.d/ && \
-sudo udevadm control --reload-rules && sudo udevadm trigger && \
-echo "Successfully added udev rules"
+wget https://raw.githubusercontent.com/IntelRealSense/librealsense/v2.56.3/config/99-realsense-libusb.rules
+sudo mv 99-realsense-libusb.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
----
-
-## 14. Configure Isaac ROS Container for RealSense
-
-This tells the container build to include the RealSense SDK layer:
-
+### Configure Container Image Key
 ```bash
 echo "CONFIG_IMAGE_KEY=ros2_humble.realsense" > ~/.isaac_ros_common-config
-
-# Verify
-cat ~/.isaac_ros_common-config
-# Expected: CONFIG_IMAGE_KEY=ros2_humble.realsense
 ```
 
----
-
-## 15. Patch Dockerfile.realsense for IMU Support
-
-> **Why this is needed:** JetPack 6 ships with the kernel HID driver disabled. The D435i IMU uses HID to communicate, so without this fix the IMU will never stream data regardless of your librealsense version. The fix switches librealsense to the `libuvc` USB backend which bypasses the kernel HID requirement entirely. This does **not** affect camera or depth performance.
-
-Edit the Dockerfile on the **host**:
+### Patch Dockerfile.realsense for IMU Support
+JetPack 6 disables the kernel HID driver, breaking the D435i IMU. Fix it by switching to the libuvc backend:
 
 ```bash
 nano ${ISAAC_ROS_WS}/src/isaac_ros_common/docker/Dockerfile.realsense
 ```
 
 Find this line:
-
 ```dockerfile
 chmod +x /opt/realsense/build-librealsense.sh && /opt/realsense/build-librealsense.sh -v ${LIBREALSENSE_SOURCE_VERSION};
 ```
-
-Change it to:
-
+Change to:
 ```dockerfile
 chmod +x /opt/realsense/build-librealsense.sh && /opt/realsense/build-librealsense.sh -n -j 2 -v ${LIBREALSENSE_SOURCE_VERSION};
 ```
 
-The two additions are:
-- `-n` — enables the libuvc backend, bypassing the kernel HID issue
-- `-j 2` — limits compile jobs to 2 so the Orin Nano doesn't freeze during the Docker image build
+The Dockerfile already has `LIBREALSENSE_SOURCE_VERSION=v2.55.1` — no other changes needed. The `-n` flag does not affect nvblox or cuVSLAM performance.
 
-Save with `Ctrl+X` → `Y` → `Enter`.
-
-> ⚠️ The `-n` flag disables CUDA **only inside librealsense** (the camera driver). It has zero effect on nvblox or cuVSLAM performance — those use their own independent CUDA pipelines.
-
-The Dockerfile already has `LIBREALSENSE_SOURCE_VERSION=v2.55.1` which is exactly the correct version for Isaac ROS 3.2. No other changes to the Dockerfile are needed.
-
-After saving, the fix will be baked into the Docker image the next time you run `run_dev.sh`. You only need to do this once.
+### Enable realsense_splitter
+```bash
+cd ${ISAAC_ROS_WS}/src/isaac_ros_nvblox/nvblox_examples/realsense_splitter
+git update-index --assume-unchanged COLCON_IGNORE && rm COLCON_IGNORE
+```
 
 ---
 
-## 16. Enter the Docker Container
+## 4. Enter the Container
 
-Plug in your RealSense camera to a USB 3 port **before** running this:
-
+Plug in your D435i to USB 3 first, then:
 ```bash
 cd ${ISAAC_ROS_WS}/src/isaac_ros_common && ./scripts/run_dev.sh
 ```
-
-> The first run will take **15–30 minutes** as it builds the Docker image with RealSense support. Subsequent runs are fast.
->
-> You will know you are inside the container when your prompt changes from `drone@jetson` to `admin@jetson`.
+First run takes 15–30 minutes. You are inside the container when your prompt shows `admin@jetson`.
 
 ---
 
-## 17. Inside Container: Fix Environment
+## 5. Inside Container: Environment (Every Session)
 
-> ⚠️ **Must do every session.** The container resets on restart and does not persist apt installs or environment changes. Always run these at the start of each container session.
+> ⚠️ Docker containers are stateless — run these at the start of every container session.
 
 ```bash
-# Source ROS Humble
 source /opt/ros/humble/setup.bash
-
-# Manually add /opt/ros/humble to CMAKE_PREFIX_PATH
-# (sourcing alone is not enough due to container entrypoint ordering)
 export CMAKE_PREFIX_PATH=/opt/ros/humble:$CMAKE_PREFIX_PATH
+export LD_LIBRARY_PATH=/opt/ros/humble/lib:$LD_LIBRARY_PATH
 
-# Make permanent for this container session
 echo "source /opt/ros/humble/setup.bash" > ~/.bashrc
 echo "export CMAKE_PREFIX_PATH=/opt/ros/humble:\$CMAKE_PREFIX_PATH" >> ~/.bashrc
-
-# Verify /opt/ros/humble is present
-echo $CMAKE_PREFIX_PATH | tr ':' '\n' | grep "opt/ros"
-# Must show: /opt/ros/humble
+echo "export LD_LIBRARY_PATH=/opt/ros/humble/lib:\$LD_LIBRARY_PATH" >> ~/.bashrc
 ```
 
 ---
 
-## 18. Inside Container: Install All Dependencies
-
-Use `rosdep` to install all nvblox and realsense dependencies in one shot instead of chasing them one by one:
+## 6. Inside Container: Install Dependencies (Every Session)
 
 ```bash
-sudo apt-get update
-rosdep update
+sudo apt-get update -q
 
+sudo apt-get install -y \
+  ros-humble-isaac-ros-nitros \
+  ros-humble-isaac-ros-managed-nitros \
+  ros-humble-isaac-ros-nitros-image-type \
+  ros-humble-isaac-ros-nitros-camera-info-type \
+  ros-humble-isaac-ros-nitros-pose-cov-stamped-type \
+  ros-humble-isaac-ros-nitros-odometry-type \
+  ros-humble-isaac-ros-nitros-point-cloud-type \
+  ros-humble-isaac-ros-visual-slam \
+  ros-humble-foxglove-bridge
+
+sudo rosdep init 2>/dev/null || true
+rosdep update
 rosdep install -i -r \
   --from-paths /workspaces/isaac_ros-dev/src/isaac_ros_nvblox/ \
   --from-paths /workspaces/isaac_ros-dev/src/realsense-ros/ \
-  --rosdistro humble \
-  -y
-```
-
-Also install Foxglove bridge:
-
-```bash
-sudo apt-get install -y ros-humble-foxglove-bridge
+  --rosdistro humble -y
 ```
 
 ---
 
-## 19. Inside Container: Build the Workspace
+## 7. Inside Container: Build (First Time Only)
 
-> ⚠️ **The Jetson Orin Nano 8GB will freeze and crash if you build with full parallelism.** Always use these throttled flags.
-
-Enable the `realsense_splitter` package first (only needed once, do on host before entering container):
-
-```bash
-# Run this on the HOST before entering container
-cd ${ISAAC_ROS_WS}/src/isaac_ros_nvblox/nvblox_examples/realsense_splitter && \
-    git update-index --assume-unchanged COLCON_IGNORE && \
-    rm COLCON_IGNORE
-```
-
-Then inside the container, build with throttled settings:
+> ⚠️ Always use `--parallel-workers 1` and `MAKEFLAGS="-j1"` or the Orin Nano will freeze.
 
 ```bash
 cd /workspaces/isaac_ros-dev
@@ -415,30 +226,16 @@ colcon build --symlink-install \
 source install/setup.bash
 ```
 
-Monitor RAM in a second terminal while building:
-
-```bash
-# On the host, in a separate terminal
-watch -n 3 free -h
-```
-
-The build takes approximately **45–60 minutes** with these settings.
+Monitor RAM during build in a separate host terminal: `watch -n 3 free -h`
 
 ---
 
-## 20. Run the nvblox Quickstart Demo
-
-Download the quickstart rosbag first (run on **host**, outside container):
+## 8. Download Quickstart Assets (Host, Once)
 
 ```bash
 sudo apt-get install -y curl jq tar
-
-NGC_ORG="nvidia"
-NGC_TEAM="isaac"
-NGC_RESOURCE="isaac_ros_nvblox_assets"
-NGC_FILENAME="quickstart.tar.gz"
-MAJOR_VERSION=3
-MINOR_VERSION=2
+NGC_ORG="nvidia"; NGC_TEAM="isaac"; NGC_RESOURCE="isaac_ros_nvblox_assets"
+NGC_FILENAME="quickstart.tar.gz"; MAJOR_VERSION=3; MINOR_VERSION=2
 VERSION_REQ_URL="https://catalog.ngc.nvidia.com/api/resources/versions?orgName=$NGC_ORG&teamName=$NGC_TEAM&name=$NGC_RESOURCE&isPublic=true&pageNumber=0&pageSize=100&sortOrder=CREATED_DATE_DESC"
 AVAILABLE_VERSIONS=$(curl -s -H "Accept: application/json" "$VERSION_REQ_URL")
 LATEST_VERSION_ID=$(echo $AVAILABLE_VERSIONS | jq -r "
@@ -447,234 +244,132 @@ LATEST_VERSION_ID=$(echo $AVAILABLE_VERSIONS | jq -r "
     | \$v | select(test(\"^\\\\d+\\\\.\\\\d+\\\\.\\\\d+$\"))
     | split(\".\") | {major: .[0]|tonumber, minor: .[1]|tonumber, patch: .[2]|tonumber}
     | select(.major == $MAJOR_VERSION and .minor <= $MINOR_VERSION)
-    | \$v
-    " | sort -V | tail -n 1
-)
-if [ -z "$LATEST_VERSION_ID" ]; then
-    echo "No version found for Isaac ROS $MAJOR_VERSION.$MINOR_VERSION"
-else
-    mkdir -p ${ISAAC_ROS_WS}/isaac_ros_assets && \
-    FILE_REQ_URL="https://api.ngc.nvidia.com/v2/resources/$NGC_ORG/$NGC_TEAM/$NGC_RESOURCE/versions/$LATEST_VERSION_ID/files/$NGC_FILENAME" && \
-    curl -LO --request GET "${FILE_REQ_URL}" && \
-    tar -xf ${NGC_FILENAME} -C ${ISAAC_ROS_WS}/isaac_ros_assets && \
-    rm ${NGC_FILENAME}
-fi
+    | \$v" | sort -V | tail -n 1)
+mkdir -p ${ISAAC_ROS_WS}/isaac_ros_assets
+FILE_REQ_URL="https://api.ngc.nvidia.com/v2/resources/$NGC_ORG/$NGC_TEAM/$NGC_RESOURCE/versions/$LATEST_VERSION_ID/files/$NGC_FILENAME"
+curl -LO --request GET "${FILE_REQ_URL}"
+tar -xf ${NGC_FILENAME} -C ${ISAAC_ROS_WS}/isaac_ros_assets && rm ${NGC_FILENAME}
 ```
 
-Then run inside the container:
+---
 
+## 9. Running nvblox
+
+### Quickstart Demo (Isaac Sim rosbag, no camera needed)
 ```bash
 source /opt/ros/humble/setup.bash
 source /workspaces/isaac_ros-dev/install/setup.bash
 
+# With RViz (requires display connected)
 ros2 launch nvblox_examples_bringup isaac_sim_example.launch.py \
   rosbag:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_nvblox/quickstart \
-  navigation:=False
+  navigation:=False run_rviz:=True run_foxglove:=False voxel_size:=0.1
+
+# With Foxglove (headless/remote) — connect to ws://<JETSON_IP>:8765
+ros2 launch nvblox_examples_bringup isaac_sim_example.launch.py \
+  rosbag:=${ISAAC_ROS_WS}/isaac_ros_assets/isaac_ros_nvblox/quickstart \
+  navigation:=False run_rviz:=False run_foxglove:=True voxel_size:=0.1
 ```
 
-This plays back a pre-recorded rosbag — no camera required. You should see a 3D mesh reconstruction in RViz.
-
----
-
-## 21. Run Live RealSense Mapping
-
-Plug in your D435i to USB 3, enter the container, and run:
-
+### Live RealSense Mapping
 ```bash
 source /opt/ros/humble/setup.bash
 source /workspaces/isaac_ros-dev/install/setup.bash
 
-# Verify camera is detected
-rs-enumerate-devices
+rs-enumerate-devices  # verify camera is detected first
 
-# Launch live mapping (RViz on local display)
-ros2 launch nvblox_examples_bringup realsense_example.launch.py
-
-# OR with Foxglove for remote visualization (recommended for headless/remote use)
 ros2 launch nvblox_examples_bringup realsense_example.launch.py \
-  run_foxglove:=True \
-  run_rviz:=False \
-  layer_streamer_bandwidth_limit_mbps:=30
+  run_rviz:=False run_foxglove:=True \
+  enable_imu_fusion:=False \
+  layer_streamer_bandwidth_limit_mbps:=30 \
+  voxel_size:=0.1
 ```
+
+> `enable_imu_fusion:=False` is required until the Dockerfile.realsense IMU patch (Step 3) is applied and container rebuilt. `voxel_size:=0.1` reduces GPU memory ~8x vs default 0.05 — safe to keep.
 
 ---
 
-## 22. Set Up Foxglove Visualization
+## 10. Foxglove Setup
 
-Foxglove lets you visualize the nvblox stream from a **separate device** (laptop, tablet) over WiFi without needing a monitor on the Jetson.
+1. Download [Foxglove Studio](https://foxglove.dev/download) on your laptop
+2. Open → **Open connection** → **Foxglove WebSocket**
+3. URL: `ws://<JETSON_IP>:8765` (find IP: `hostname -I | awk '{print $1}'`)
+4. Install the **nvblox extension**: Extensions sidebar → search "nvblox" → Install
+5. Add panel → **3D** → subscribe to `/nvblox_node/mesh`
 
-**On your remote device:**
-1. Download Foxglove Studio from https://foxglove.dev/download (or use https://studio.foxglove.dev in Chrome)
-2. Open Foxglove Studio → click **"Open connection"**
-3. Select **"Foxglove WebSocket"**
-4. Enter the URL: `ws://<JETSON_IP>:8765`
-   - Find your Jetson's IP with: `hostname -I | awk '{print $1}'`
-5. Install the **nvblox extension**: Extensions sidebar → search "nvblox" → Install
-
-**Inside the container**, start the Foxglove bridge in a separate terminal:
-
+Start bridge in a separate container terminal:
 ```bash
 source /opt/ros/humble/setup.bash
-source /workspaces/isaac_ros-dev/install/setup.bash
 ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 ```
 
-**Topics to add in Foxglove:**
-- `/nvblox_node/mesh` — 3D reconstruction mesh
-- `/nvblox_node/static_esdf_pointcloud` — 2D distance field slice
-- `/camera/color/image_raw` — live camera (avoid over WiFi, high bandwidth)
-
 ---
 
-## 23. Saving Maps and Recording Bags
-
-### Save the nvblox Map to Disk
-
-Call this service **while nvblox is running** (in a second terminal inside the container):
+## 11. Save Map and Record Bags
 
 ```bash
-mkdir -p /ssd/workspaces/semantic_mapping/saved_maps
-
+# Save nvblox map while it's running (second terminal inside container)
 ros2 service call /nvblox_node/save_map \
   nvblox_msgs/srv/FilePath \
   "{file_path: '/ssd/workspaces/semantic_mapping/saved_maps/my_map'}"
-```
 
-### Record a Rosbag Without Auto-Deletion
-
-```bash
+# Record rosbag with no size limit or auto-deletion
 mkdir -p /ssd/workspaces/semantic_mapping/recordings
-
 ros2 bag record \
-  /camera/color/image_raw \
-  /camera/depth/image_rect_raw \
-  /camera/color/camera_info \
-  /camera/depth/camera_info \
-  /camera/imu \
-  /tf \
-  /tf_static \
+  /camera/color/image_raw /camera/depth/image_rect_raw \
+  /camera/color/camera_info /camera/depth/camera_info \
+  /camera/imu /tf /tf_static \
   --output /ssd/workspaces/semantic_mapping/recordings/session_$(date +%Y%m%d_%H%M%S) \
-  --max-bag-size 0 \
-  --max-cache-size 0
-```
-
-### Replay a Saved Bag Through nvblox
-
-```bash
-ros2 launch nvblox_examples_bringup realsense_example.launch.py \
-  rosbag:=/ssd/workspaces/semantic_mapping/recordings/<your_bag_folder> \
-  run_foxglove:=True \
-  run_rviz:=False
+  --max-bag-size 0 --max-cache-size 0
 ```
 
 ---
 
-## 24. Known Bugs and Fixes
+## 12. Every Session Checklist
 
-### Bug: `isaac-ros-cli` package not found
-**Cause:** `isaac-ros activate` / `isaac-ros-cli` does not exist for Ubuntu 22.04. It is Isaac ROS 4.x only.
-**Fix:** Use `./scripts/run_dev.sh` instead of `isaac-ros activate` for all container operations.
-
-### Bug: 404 on `isaac.download.nvidia.com/isaac-ros/ubuntu/main`
-**Cause:** Stale/incorrect apt source entry pointing to a non-existent path.
-**Fix:**
+**Host:**
 ```bash
-sudo rm -f /etc/apt/sources.list.d/isaac-ros.list
-grep -r "isaac.download.nvidia.com" /etc/apt/  # should return nothing
-# Then re-add the correct repo from Step 9
-```
-
-### Bug: `W: Skipping acquire... component 'main' misspelt`
-**Cause:** Isaac ROS release-3 repo uses a flat structure, not a `main` component.
-**Fix:** The `.list` entry must end with `jammy/` not `jammy main`. See Step 9.
-
-### Bug: `nvblox_core/cmake/cuda/setup_compute_capability.cmake` not found
-**Cause:** `isaac_ros_nvblox` was cloned without initializing git submodules.
-**Fix:**
-```bash
-cd ${ISAAC_ROS_WS}/src/isaac_ros_nvblox
-git submodule update --init --recursive
-```
-
-### Bug: `magic_enum::magic_enum` target not found
-**Cause:** `isaac_ros_nitros` was cloned from source and attempted to build — it requires `magic_enum` which is not available.
-**Fix:** Remove `isaac_ros_nitros` from `src/` and install it via apt instead. Never build it from source.
-```bash
-rm -rf ${ISAAC_ROS_WS}/src/isaac_ros_nitros
-# Then install inside container: sudo apt-get install -y ros-humble-isaac-ros-nitros
-```
-
-### Bug: `CMAKE_PREFIX_PATH` missing `/opt/ros/humble`
-**Cause:** The container entrypoint sources the workspace overlay before ROS, which prevents `/opt/ros/humble` from being added to the path.
-**Fix:** Manually export it every session:
-```bash
-source /opt/ros/humble/setup.bash
-export CMAKE_PREFIX_PATH=/opt/ros/humble:$CMAKE_PREFIX_PATH
-```
-
-### Bug: Jetson freezes/crashes during `colcon build`
-**Cause:** Default colcon uses all CPU cores and RAM simultaneously, overwhelming the Orin Nano.
-**Fix:** Always use throttled build flags (see Step 18). Monitor RAM with `watch -n 3 free -h`.
-
-### Bug: D435i IMU not working / not streaming
-**Cause:** JetPack 6 ships with the kernel HID driver disabled. The D435i IMU uses HID to communicate, making it inaccessible inside Docker on JetPack 6 with the default librealsense kernel backend.
-**Fix:** Patch `Dockerfile.realsense` to use the libuvc backend with `-n` flag (see Step 15). This is a one-time fix baked into the Docker image.
-
-### Bug: VIO/cuVSLAM hangs waiting for IMU data
-**Cause:** `enable_imu_fusion` defaults to `True` but no IMU data arrives (due to the JetPack 6 HID issue above).
-**Fix (temporary, while IMU fix is not yet applied):** Disable IMU fusion to run visual-only SLAM:
-```bash
-ros2 launch nvblox_examples_bringup realsense_example.launch.py \
-  enable_imu_fusion:=False
-```
-**Fix (permanent):** Apply the Dockerfile patch in Step 15 and rebuild the container.
-
-
-**Cause:** Docker containers are stateless — apt installs inside the container do not persist.
-**Fix:** Always re-run `rosdep install` and apt installs at the start of each container session (Step 17).
-
----
-
-## 25. Every Session Checklist
-
-Each time you restart the Jetson and want to work on this project, run through this checklist:
-
-**On the host (`drone@jetson`):**
-```bash
-# 1. Verify swap is active (zram should show ~3.7GB)
-free -h
-
-# 2. Set performance mode
-sudo /usr/bin/jetson_clocks
-sudo /usr/sbin/nvpmodel -m 0
-
-# 3. Plug in RealSense D435i to USB 3
-
-# 4. Enter the container
+sudo /usr/bin/jetson_clocks && sudo /usr/sbin/nvpmodel -m 0
+free -h  # need 3GB+ available before launching
+# Plug in D435i to USB 3
 cd ${ISAAC_ROS_WS}/src/isaac_ros_common && ./scripts/run_dev.sh
 ```
 
-**Inside the container (`admin@jetson`):**
+**Container (`admin@jetson`):**
 ```bash
-# 5. Fix environment
 source /opt/ros/humble/setup.bash
 export CMAKE_PREFIX_PATH=/opt/ros/humble:$CMAKE_PREFIX_PATH
+export LD_LIBRARY_PATH=/opt/ros/humble/lib:$LD_LIBRARY_PATH
 
-# 6. Re-install dependencies (lost on container restart)
-sudo apt-get update
-rosdep update
-rosdep install -i -r \
-  --from-paths /workspaces/isaac_ros-dev/src/isaac_ros_nvblox/ \
-  --from-paths /workspaces/isaac_ros-dev/src/realsense-ros/ \
-  --rosdistro humble -y
-sudo apt-get install -y ros-humble-foxglove-bridge
+sudo apt-get update -q && sudo apt-get install -y \
+  ros-humble-isaac-ros-nitros ros-humble-isaac-ros-managed-nitros \
+  ros-humble-isaac-ros-nitros-image-type \
+  ros-humble-isaac-ros-nitros-camera-info-type \
+  ros-humble-isaac-ros-nitros-pose-cov-stamped-type \
+  ros-humble-isaac-ros-nitros-odometry-type \
+  ros-humble-isaac-ros-nitros-point-cloud-type \
+  ros-humble-isaac-ros-visual-slam ros-humble-foxglove-bridge
 
-# 7. Source the built workspace
 source /workspaces/isaac_ros-dev/install/setup.bash
-
-# 8. Verify camera
 rs-enumerate-devices
 ```
+
+---
+
+## Known Bugs Quick Reference
+
+| Bug | Fix |
+|---|---|
+| `isaac-ros-cli` not found | Use `./scripts/run_dev.sh` — CLI is 4.x only |
+| 404 on apt repo `/ubuntu/main` | Remove stale list, re-add with `jammy/` not `jammy main` |
+| `nvblox_core` CMake error | `git submodule update --init --recursive` inside `isaac_ros_nvblox/` |
+| `magic_enum` not found | Remove `src/isaac_ros_nitros/`, install via apt instead |
+| `/opt/ros/humble` missing from `CMAKE_PREFIX_PATH` | `export CMAKE_PREFIX_PATH=/opt/ros/humble:$CMAKE_PREFIX_PATH` |
+| Jetson freezes during build | Use `--parallel-workers 1` and `MAKEFLAGS="-j1"` |
+| D435i IMU not working | Patch `Dockerfile.realsense` with `-n` flag (Step 3) |
+| `libisaac_ros_nitros_image_type.so` not found | `sudo apt-get install -y ros-humble-isaac-ros-nitros-image-type` |
+| nvblox mesh blank / CUDA out of memory | Add `voxel_size:=0.1` to launch command |
+| apt packages gone after container restart | Docker is stateless — re-run Step 6 every session |
 
 ---
 
@@ -682,10 +377,11 @@ rs-enumerate-devices
 
 - [ ] Live 3D semantic mapping with nvblox + RealSense D435i
 - [ ] Visual SLAM / localization with cuVSLAM
-- [ ] People segmentation overlay on map
+- [ ] VIO with D435i IMU (requires Dockerfile.realsense patch + container rebuild)
+- [ ] Semantic segmentation overlay on map
 - [ ] Map persistence across sessions
 - [ ] Remote visualization via Foxglove
-- [ ] Executable scripts for one-command launch of full pipeline
+- [ ] One-command launch scripts
 
 ---
 
@@ -694,19 +390,20 @@ rs-enumerate-devices
 ```
 semantic_mapping/
 ├── src/
-│   ├── isaac_ros_common/        ← NVIDIA (gitignored)
-│   ├── isaac_ros_nvblox/        ← NVIDIA (gitignored)
-│   ├── isaac_ros_image_pipeline/← NVIDIA (gitignored)
-│   ├── isaac_ros_compression/   ← NVIDIA (gitignored)
-│   └── realsense-ros/           ← Intel  (gitignored)
-├── build/                       ← gitignored
-├── install/                     ← gitignored
-├── log/                         ← gitignored
-├── isaac_ros_assets/            ← gitignored
-├── saved_maps/                  ← nvblox saved maps
-├── recordings/                  ← rosbag recordings (gitignored)
-├── scripts/                     ← launch/automation scripts (tracked)
-├── config/                      ← custom configs (tracked)
+│   ├── isaac_ros_common/         ← NVIDIA (gitignored)
+│   ├── isaac_ros_nvblox/         ← NVIDIA (gitignored)
+│   ├── isaac_ros_image_pipeline/ ← NVIDIA (gitignored)
+│   ├── isaac_ros_compression/    ← NVIDIA (gitignored)
+│   ├── isaac_ros_visual_slam/    ← NVIDIA (gitignored)
+│   └── realsense-ros/            ← Intel  (gitignored)
+├── build/                        ← gitignored
+├── install/                      ← gitignored
+├── log/                          ← gitignored
+├── isaac_ros_assets/             ← gitignored
+├── saved_maps/
+├── recordings/                   ← gitignored
+├── scripts/                      ← your launch scripts (tracked)
+├── config/                       ← your configs (tracked)
 ├── README.md
 └── .gitignore
 ```
