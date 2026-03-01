@@ -1,0 +1,31 @@
+# ── ROS build artifacts ──────────────────────────────────────────
+build/
+install/
+log/
+
+# ── Downloaded NGC assets ────────────────────────────────────────
+isaac_ros_assets/
+
+# ── Third-party cloned repos in src/ ────────────────────────────
+src/isaac_ros_common/
+src/isaac_ros_nvblox/
+src/isaac_ros_image_pipeline/
+src/isaac_ros_compression/
+src/realsense-ros/
+
+# ── Large data files ─────────────────────────────────────────────
+recordings/
+saved_maps/*.bin
+saved_maps/*.ply
+*.bag
+*.db3
+*.mcap
+
+# ── System/editor junk ───────────────────────────────────────────
+.DS_Store
+*.swp
+*.swo
+*~
+__pycache__/
+*.pyc
+*.pyo
