@@ -13,7 +13,6 @@ saved_maps/
 *.mcap
 *.pcd
 *.pgm
-*.yaml
 
 # OS/Editor generated files
 .vscode/
