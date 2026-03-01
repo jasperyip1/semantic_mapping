@@ -22,16 +22,17 @@ Live semantic mapping and localization using **Isaac ROS 3.2**, **nvblox**, and 
 12. [Clone Required Repositories](#12-clone-required-repositories)
 13. [Set Up RealSense udev Rules](#13-set-up-realsense-udev-rules)
 14. [Configure Isaac ROS Container for RealSense](#14-configure-isaac-ros-container-for-realsense)
-15. [Enter the Docker Container](#15-enter-the-docker-container)
-16. [Inside Container: Fix Environment](#16-inside-container-fix-environment)
-17. [Inside Container: Install All Dependencies](#17-inside-container-install-all-dependencies)
-18. [Inside Container: Build the Workspace](#18-inside-container-build-the-workspace)
-19. [Run the nvblox Quickstart Demo](#19-run-the-nvblox-quickstart-demo)
-20. [Run Live RealSense Mapping](#20-run-live-realsense-mapping)
-21. [Set Up Foxglove Visualization](#21-set-up-foxglove-visualization)
-22. [Saving Maps and Recording Bags](#22-saving-maps-and-recording-bags)
-23. [Known Bugs and Fixes](#23-known-bugs-and-fixes)
-24. [Every Session Checklist](#24-every-session-checklist)
+15. [Patch Dockerfile.realsense for IMU Support](#15-patch-dockerfilerealsense-for-imu-support)
+16. [Enter the Docker Container](#16-enter-the-docker-container)
+17. [Inside Container: Fix Environment](#17-inside-container-fix-environment)
+18. [Inside Container: Install All Dependencies](#18-inside-container-install-all-dependencies)
+19. [Inside Container: Build the Workspace](#19-inside-container-build-the-workspace)
+20. [Run the nvblox Quickstart Demo](#20-run-the-nvblox-quickstart-demo)
+21. [Run Live RealSense Mapping](#21-run-live-realsense-mapping)
+22. [Set Up Foxglove Visualization](#22-set-up-foxglove-visualization)
+23. [Saving Maps and Recording Bags](#23-saving-maps-and-recording-bags)
+24. [Known Bugs and Fixes](#24-known-bugs-and-fixes)
+25. [Every Session Checklist](#25-every-session-checklist)
 
 ---
 
@@ -56,9 +57,11 @@ Live semantic mapping and localization using **Isaac ROS 3.2**, **nvblox**, and 
 | Isaac ROS | **3.2** (`release-3.2` branch) |
 | ROS 2 | **Humble** |
 | Docker Engine | 27.2.0 or newer |
-| RealSense Firmware | 5.16.0.1 |
-| librealsense SDK | v2.56.3 |
-| realsense-ros driver | 4.51.1 |
+| RealSense Firmware | **5.13.0.50** |
+| librealsense SDK | **v2.55.1** |
+| realsense-ros driver | **4.51.1-isaac** |
+
+> ⚠️ The current Isaac ROS 4.x docs reference firmware 5.16.0.1 and librealsense 2.56.3 — those are **wrong for Isaac ROS 3.2**. The versions in this table are the correct ones for this setup.
 
 ---
 
@@ -286,7 +289,43 @@ cat ~/.isaac_ros_common-config
 
 ---
 
-## 15. Enter the Docker Container
+## 15. Patch Dockerfile.realsense for IMU Support
+
+> **Why this is needed:** JetPack 6 ships with the kernel HID driver disabled. The D435i IMU uses HID to communicate, so without this fix the IMU will never stream data regardless of your librealsense version. The fix switches librealsense to the `libuvc` USB backend which bypasses the kernel HID requirement entirely. This does **not** affect camera or depth performance.
+
+Edit the Dockerfile on the **host**:
+
+```bash
+nano ${ISAAC_ROS_WS}/src/isaac_ros_common/docker/Dockerfile.realsense
+```
+
+Find this line:
+
+```dockerfile
+chmod +x /opt/realsense/build-librealsense.sh && /opt/realsense/build-librealsense.sh -v ${LIBREALSENSE_SOURCE_VERSION};
+```
+
+Change it to:
+
+```dockerfile
+chmod +x /opt/realsense/build-librealsense.sh && /opt/realsense/build-librealsense.sh -n -j 2 -v ${LIBREALSENSE_SOURCE_VERSION};
+```
+
+The two additions are:
+- `-n` — enables the libuvc backend, bypassing the kernel HID issue
+- `-j 2` — limits compile jobs to 2 so the Orin Nano doesn't freeze during the Docker image build
+
+Save with `Ctrl+X` → `Y` → `Enter`.
+
+> ⚠️ The `-n` flag disables CUDA **only inside librealsense** (the camera driver). It has zero effect on nvblox or cuVSLAM performance — those use their own independent CUDA pipelines.
+
+The Dockerfile already has `LIBREALSENSE_SOURCE_VERSION=v2.55.1` which is exactly the correct version for Isaac ROS 3.2. No other changes to the Dockerfile are needed.
+
+After saving, the fix will be baked into the Docker image the next time you run `run_dev.sh`. You only need to do this once.
+
+---
+
+## 16. Enter the Docker Container
 
 Plug in your RealSense camera to a USB 3 port **before** running this:
 
@@ -300,7 +339,7 @@ cd ${ISAAC_ROS_WS}/src/isaac_ros_common && ./scripts/run_dev.sh
 
 ---
 
-## 16. Inside Container: Fix Environment
+## 17. Inside Container: Fix Environment
 
 > ⚠️ **Must do every session.** The container resets on restart and does not persist apt installs or environment changes. Always run these at the start of each container session.
 
@@ -323,7 +362,7 @@ echo $CMAKE_PREFIX_PATH | tr ':' '\n' | grep "opt/ros"
 
 ---
 
-## 17. Inside Container: Install All Dependencies
+## 18. Inside Container: Install All Dependencies
 
 Use `rosdep` to install all nvblox and realsense dependencies in one shot instead of chasing them one by one:
 
@@ -346,7 +385,7 @@ sudo apt-get install -y ros-humble-foxglove-bridge
 
 ---
 
-## 18. Inside Container: Build the Workspace
+## 19. Inside Container: Build the Workspace
 
 > ⚠️ **The Jetson Orin Nano 8GB will freeze and crash if you build with full parallelism.** Always use these throttled flags.
 
@@ -387,7 +426,7 @@ The build takes approximately **45–60 minutes** with these settings.
 
 ---
 
-## 19. Run the nvblox Quickstart Demo
+## 20. Run the nvblox Quickstart Demo
 
 Download the quickstart rosbag first (run on **host**, outside container):
 
@@ -437,7 +476,7 @@ This plays back a pre-recorded rosbag — no camera required. You should see a 3
 
 ---
 
-## 20. Run Live RealSense Mapping
+## 21. Run Live RealSense Mapping
 
 Plug in your D435i to USB 3, enter the container, and run:
 
@@ -460,7 +499,7 @@ ros2 launch nvblox_examples_bringup realsense_example.launch.py \
 
 ---
 
-## 21. Set Up Foxglove Visualization
+## 22. Set Up Foxglove Visualization
 
 Foxglove lets you visualize the nvblox stream from a **separate device** (laptop, tablet) over WiFi without needing a monitor on the Jetson.
 
@@ -487,7 +526,7 @@ ros2 launch foxglove_bridge foxglove_bridge_launch.xml
 
 ---
 
-## 22. Saving Maps and Recording Bags
+## 23. Saving Maps and Recording Bags
 
 ### Save the nvblox Map to Disk
 
@@ -530,7 +569,7 @@ ros2 launch nvblox_examples_bringup realsense_example.launch.py \
 
 ---
 
-## 23. Known Bugs and Fixes
+## 24. Known Bugs and Fixes
 
 ### Bug: `isaac-ros-cli` package not found
 **Cause:** `isaac-ros activate` / `isaac-ros-cli` does not exist for Ubuntu 22.04. It is Isaac ROS 4.x only.
@@ -577,13 +616,26 @@ export CMAKE_PREFIX_PATH=/opt/ros/humble:$CMAKE_PREFIX_PATH
 **Cause:** Default colcon uses all CPU cores and RAM simultaneously, overwhelming the Orin Nano.
 **Fix:** Always use throttled build flags (see Step 18). Monitor RAM with `watch -n 3 free -h`.
 
-### Bug: apt-installed packages missing after container restart
+### Bug: D435i IMU not working / not streaming
+**Cause:** JetPack 6 ships with the kernel HID driver disabled. The D435i IMU uses HID to communicate, making it inaccessible inside Docker on JetPack 6 with the default librealsense kernel backend.
+**Fix:** Patch `Dockerfile.realsense` to use the libuvc backend with `-n` flag (see Step 15). This is a one-time fix baked into the Docker image.
+
+### Bug: VIO/cuVSLAM hangs waiting for IMU data
+**Cause:** `enable_imu_fusion` defaults to `True` but no IMU data arrives (due to the JetPack 6 HID issue above).
+**Fix (temporary, while IMU fix is not yet applied):** Disable IMU fusion to run visual-only SLAM:
+```bash
+ros2 launch nvblox_examples_bringup realsense_example.launch.py \
+  enable_imu_fusion:=False
+```
+**Fix (permanent):** Apply the Dockerfile patch in Step 15 and rebuild the container.
+
+
 **Cause:** Docker containers are stateless — apt installs inside the container do not persist.
 **Fix:** Always re-run `rosdep install` and apt installs at the start of each container session (Step 17).
 
 ---
 
-## 24. Every Session Checklist
+## 25. Every Session Checklist
 
 Each time you restart the Jetson and want to work on this project, run through this checklist:
 
