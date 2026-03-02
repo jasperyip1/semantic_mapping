@@ -16,7 +16,7 @@
     integrate_lidar_rate_hz: 40.0
     update_mesh_rate_hz: 1.0
     update_esdf_rate_hz: 10.0
-    publish_layer_rate_hz: 5.0
+    publish_layer_rate_hz: 1.0
     publish_debug_vis_rate_hz: 2.0
     decay_tsdf_rate_hz: 0.0
     decay_dynamic_occupancy_rate_hz: 10.0
@@ -61,7 +61,7 @@
     layer_visualization_undo_gamma_correction: false
     max_back_projection_distance: 7.0
     back_projection_subsampling: 1 # no subsampling if == 1
-    layer_streamer_bandwidth_limit_mbps: -1.0 # unlimited
+    layer_streamer_bandwidth_limit_mbps: 4.0
 
     multi_mapper:
       connected_mask_component_size_threshold: 2000
