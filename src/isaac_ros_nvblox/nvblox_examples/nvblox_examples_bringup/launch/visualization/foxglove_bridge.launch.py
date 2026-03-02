@@ -70,7 +70,7 @@ def add_foxglove(args: lu.ArgumentContainer) -> List[Action]:
 
 def generate_launch_description() -> LaunchDescription:
     args = lu.ArgumentContainer()
-    args.add_arg('send_buffer_limit', 10000000)
+    args.add_arg('send_buffer_limit', 100000000)
     args.add_arg(
         'use_foxglove_whitelist',
         True,
