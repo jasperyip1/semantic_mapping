@@ -119,7 +119,7 @@ def generate_launch_description() -> LaunchDescription:
         cli=True)
     args.add_arg(
         'enable_imu_fusion',
-        'False',
+        'True',
         description='Whether to use imu data in visual slam.',
         cli=True)
     args.add_arg('container_name', NVBLOX_CONTAINER_NAME)
