@@ -62,7 +62,7 @@ def add_foxglove(args: lu.ArgumentContainer) -> List[Action]:
             executable='foxglove_bridge',
             parameters=params,
             # Use error log level to reduce terminal cluttering from "send_buffer_limit reached" warnings.
-            arguments=['--ros-args', '--log-level', 'ERROR'],
+            arguments=['--ros-args', '--log-level', 'WARN'],
         ))
 
     return actions

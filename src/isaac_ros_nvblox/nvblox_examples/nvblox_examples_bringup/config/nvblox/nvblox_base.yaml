@@ -106,5 +106,5 @@
       tsdf_decayed_free_distance_vox: 4.0
       decay_integrator_deallocate_decayed_blocks: false
       # mesh streamer
-      layer_streamer_exclusion_height_m: 20.0
-      layer_streamer_exclusion_radius_m: 100.0
+      mesh_streamer_exclusion_height_m: 20.0
+      mesh_streamer_exclusion_radius_m: 100.0
