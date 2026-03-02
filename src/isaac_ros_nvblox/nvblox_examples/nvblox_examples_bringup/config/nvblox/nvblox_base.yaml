@@ -101,10 +101,10 @@
       # tsdf decay integrator
       tsdf_decay_factor: 0.95
       tsdf_decayed_weight_threshold: 0.001
-      exclude_last_view_from_decay: true
+      exclude_last_view_from_decay: false
       tsdf_set_free_distance_on_decayed: false
       tsdf_decayed_free_distance_vox: 4.0
-      decay_integrator_deallocate_decayed_blocks: true
+      decay_integrator_deallocate_decayed_blocks: false
       # mesh streamer
       layer_streamer_exclusion_height_m: 20.0
       layer_streamer_exclusion_radius_m: 100.0
