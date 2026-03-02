@@ -272,12 +272,34 @@ ros2 launch nvblox_examples_bringup isaac_sim_example.launch.py \
 ```
 
 ### Live RealSense Mapping
+
 ```bash
 source /opt/ros/humble/setup.bash
 source /workspaces/isaac_ros-dev/install/setup.bash
 
 rs-enumerate-devices  # verify camera is detected first
+```
 
+Choose one of the two launch modes below:
+
+---
+
+#### Option A — Local RViz (display connected to this machine)
+
+```bash
+ros2 launch nvblox_examples_bringup realsense_example.launch.py \
+  run_rviz:=True run_foxglove:=False \
+  enable_imu_fusion:=False \
+  voxel_size:=0.1
+```
+
+> Requires a local display (X11 or Wayland). If running inside a Docker container, make sure `DISPLAY` is exported and X forwarding or a host display socket is mounted (e.g. `-e DISPLAY=$DISPLAY -v /tmp/.X11-unix:/tmp/.X11-unix`).
+
+---
+
+#### Option B — Foxglove (remote / headless streaming)
+
+```bash
 ros2 launch nvblox_examples_bringup realsense_example.launch.py \
   run_rviz:=False run_foxglove:=True \
   enable_imu_fusion:=False \
@@ -285,9 +307,13 @@ ros2 launch nvblox_examples_bringup realsense_example.launch.py \
   voxel_size:=0.1
 ```
 
-> `enable_imu_fusion:=False` is required until the Dockerfile.realsense IMU patch (Step 3) is applied and container rebuilt. `voxel_size:=0.1` reduces GPU memory ~8x vs default 0.05 — safe to keep.
+> Connect via [Foxglove Studio](https://foxglove.dev) at `ws://<device-ip>:8765`. Useful for Jetson or headless setups where a local display isn't available.
 
 ---
+
+> **Notes**
+> - `enable_imu_fusion:=False` is required until the `Dockerfile.realsense` IMU patch (Step 3) is applied and the container is rebuilt.
+> - `voxel_size:=0.1` reduces GPU memory usage ~8× compared to the default `0.05` — safe to keep for most use cases.
 
 ## 10. Foxglove Setup
 
