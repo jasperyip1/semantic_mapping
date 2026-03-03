@@ -20,7 +20,14 @@ import isaac_ros_launch_utils as lu
 
 from nvblox_ros_python_utils.nvblox_launch_utils import NvbloxMode, NvbloxCamera, NvbloxPeopleSegmentation
 from nvblox_ros_python_utils.nvblox_constants import NVBLOX_CONTAINER_NAME
+from isaac_ros_launch_utils.all_types import *
+import isaac_ros_launch_utils as lu
 
+from nvblox_ros_python_utils.nvblox_launch_utils import NvbloxMode, NvbloxCamera, NvbloxPeopleSegmentation
+from nvblox_ros_python_utils.nvblox_constants import NVBLOX_CONTAINER_NAME
+
+# ---> ADD THIS LINE <---
+from launch.actions import ExecuteProcess
 
 def generate_launch_description() -> LaunchDescription:
     args = lu.ArgumentContainer()
@@ -215,5 +222,34 @@ def generate_launch_description() -> LaunchDescription:
         lu.component_container(
             NVBLOX_CONTAINER_NAME, condition=UnlessCondition(args.attach_to_container),
             log_level=args.log_level))
+    
+
+    # Container
+    # NOTE: By default (attach_to_container:=False) we launch a container which all nodes are
+    # added to, however, we expose the option to not launch a container, and instead attach to
+    # an already running container. The reason for this is that when running live on multiple
+    # realsenses we have experienced unreliability in the bringup of multiple realsense drivers.
+    # To (partially) mitigate this issue the suggested workflow for multi-realsenses is to:
+    # 1. Launch RS (cameras & splitter) and start a component_container
+    # 2. Launch nvblox + cuvslam and attached to the above running component container
+
+    actions.append(
+        lu.component_container(
+            NVBLOX_CONTAINER_NAME, condition=UnlessCondition(args.attach_to_container),
+            log_level=args.log_level))
+
+    # ---> ADD THIS ENTIRE BLOCK <---
+    # Launch NanoOwl Python Node
+    actions.append(
+        ExecuteProcess(
+            # NOTE: You may need to use the absolute path (e.g., '/workspaces/isaac_ros-dev/semantic_mapping/nanoowl/nanoowl.py') 
+            # if the relative path below cannot be found when you run the launch command.
+            cmd=['python3', 'nanoowl/nanoowl.py'], 
+            output='screen'
+        )
+    )
+    # -------------------------------
 
     return LaunchDescription(actions)
+
+   
