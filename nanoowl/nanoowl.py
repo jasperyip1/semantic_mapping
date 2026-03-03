@@ -3,6 +3,9 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
+# --- CHANGED: Added the QoS profile import needed for RealSense cameras ---
+from rclpy.qos import qos_profile_sensor_data 
+
 # Import standard ROS 2 vision messages
 from vision_msgs.msg import Detection2DArray, Detection2D, BoundingBox2D, ObjectHypothesisWithPose
 
@@ -24,12 +27,14 @@ class NanoOwlNode(Node):
         self.bridge = CvBridge()
         self.get_logger().info("NanoOwl Ready.")
 
-        # 2. Image Subscriber (UPDATED TOPIC TO MATCH IMAGE_GEOMETRY NODE)
+        # 2. Image Subscriber 
+        # --- CHANGED: Replaced '10' with 'qos_profile_sensor_data' ---
+        # This allows the node to accept the Best-Effort video stream from the RealSense
         self.subscription = self.create_subscription(
             Image,
-            '/camera/color/image_raw',  # Removed the '0' so it matches your depth topic
+            '/camera/color/image_raw',  
             self.image_callback,
-            10)
+            qos_profile_sensor_data)
 
         # 3. Detection Publisher
         self.detection_pub = self.create_publisher(
