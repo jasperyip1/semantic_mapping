@@ -3,7 +3,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
-# --- CHANGED: Added the QoS profile import needed for RealSense cameras ---
+# QoS profile needed for RealSense cameras
 from rclpy.qos import qos_profile_sensor_data 
 
 # Import standard ROS 2 vision messages
@@ -28,11 +28,10 @@ class NanoOwlNode(Node):
         self.get_logger().info("NanoOwl Ready.")
 
         # 2. Image Subscriber 
-        # --- CHANGED: Replaced '10' with 'qos_profile_sensor_data' ---
-        # This allows the node to accept the Best-Effort video stream from the RealSense
+        # UPDATED: Topic changed to /camera0/ and QoS set to sensor_data
         self.subscription = self.create_subscription(
             Image,
-            '/camera/color/image_raw',  
+            '/camera0/color/image_raw',  
             self.image_callback,
             qos_profile_sensor_data)
 
@@ -70,7 +69,6 @@ class NanoOwlNode(Node):
                 detection.header = msg.header
                 
                 # A. Set up the Bounding Box Geometry
-                # Convert to standard Python floats to ensure downstream compatibility
                 x_min, y_min, x_max, y_max = [float(val) for val in box]
                 bbox = BoundingBox2D()
                 
@@ -85,8 +83,6 @@ class NanoOwlNode(Node):
                 # B. Set up the Class and Score (Hypothesis)
                 hypothesis_with_pose = ObjectHypothesisWithPose()
                 
-                # Get the actual string name from our list using the index
-                # Note: Convert label_idx to int if it is a tensor
                 class_name = self.target_classes[int(label_idx)] 
                 
                 hypothesis_with_pose.hypothesis.class_id = class_name
@@ -100,7 +96,6 @@ class NanoOwlNode(Node):
             # 4. Publish the final array
             self.detection_pub.publish(detection_array_msg)
             
-            # Optional: Print to terminal so you know it's working
             if len(detection_array_msg.detections) > 0:
                 self.get_logger().info(f"Published {len(detection_array_msg.detections)} detections.")
 
