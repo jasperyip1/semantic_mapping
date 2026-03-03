@@ -1,64 +1,123 @@
-## Spatial Object Locator
+# 🦉 Spatial Object Locator (NanoOWL + Image Geometry + TF2)
 
-This node translates 2D object detections from NanoOWL into 3D world coordinates relative to the Intel RealSense D435i camera. It avoids the high CPU overhead of processing full 3D PointClouds by performing targeted math on the 2D aligned depth image.
+This project translates 2D object detections from NVIDIA's NanoOWL into 3D absolute world coordinates. It uses `image_geometry` to calculate depth from an aligned RealSense depth stream and `tf2` to lock those coordinates to an absolute VSLAM map frame (e.g., `map` or `odom`).
 
-### How It Works
+### Environment
 
-1. **Median Patch Extraction (The "Hole" Fix):** Infrared depth sensors often return `0` (unknown) on reflective, transparent, or overly dark surfaces. Instead of blindly trusting the exact center pixel of a bounding box, this node extracts a `20x20` pixel Region of Interest (ROI) around the center. It uses `numpy` to filter out all `0` values and calculates the **median** depth of the remaining valid pixels, ensuring a highly robust distance measurement.
-2. **Dynamic Camera Intrinsics:** Instead of hardcoding the RealSense FOV or focal lengths, the node subscribes to the live `/camera/color/camera_info` topic. It feeds this data into `image_geometry.PinholeCameraModel`, which dynamically generates the exact mathematical model of your specific physical lens.
-3. **3D Ray Projection:** Once the median depth ($Z$) is found, the node uses the `PinholeCameraModel` to shoot a normalized 3D ray through the 2D pixel coordinate $(u, v)$. By multiplying the $X$ and $Y$ components of this normalized ray by our physical depth ($Z$), we obtain the precise $(X, Y, Z)$ spatial coordinate of the object in meters, relative to the camera lens.
-4. **Edge-Case Safety:** Added dynamic bounds-checking to ensure that if an object is detected at the extreme edge of the camera frame, the ROI patch calculation will not attempt to read pixels outside the image array, preventing `IndexError` crashes.
+- **OS:** Ubuntu 22.04
+- **ROS 2:** Humble
+- **Framework:** Isaac ROS 3.2 (NVBlox)
+- **Hardware:** Intel RealSense D435i / D455
 
 ---
 
-## Installation & Setup
+## 🛠️ 1. Installation & Dependencies
 
-To run this ROS 2 node, you need to ensure your environment has the standard ROS 2 vision libraries, Python dependencies, and the Intel RealSense ROS 2 wrapper installed.
-
-The following instructions assume you are using a modern ROS 2 distribution (like Humble, Iron, or Jazzy) on Ubuntu.
-
-### Step 1: Install ROS 2 Vision & Geometry Packages
-
-These are the core ROS 2 libraries used for vision messages, OpenCV image conversions, and the pinhole camera mathematics. Open your terminal and run:
+Open your terminal and install the required ROS 2 Humble packages. These handle the vision messages, image conversions, camera mathematics, and spatial transformations.
 
 ```bash
 sudo apt update
-sudo apt install ros-$ROS_DISTRO-vision-msgs \
-                 ros-$ROS_DISTRO-cv-bridge \
-                 ros-$ROS_DISTRO-image-geometry
+sudo apt install ros-humble-vision-msgs \
+                 ros-humble-cv-bridge \
+                 ros-humble-image-geometry \
+                 ros-humble-tf2-ros \
+                 ros-humble-tf2-geometry-msgs
 ```
 
-### Step 2: Install Python Dependencies
-
-Ensure that `numpy` and `opencv-python` are installed to process the image matrices and calculate the median depth:
+Next, ensure you have the required Python libraries for matrix math and image processing:
 
 ```bash
-pip3 install numpy opencv-python
+pip3 install numpy opencv-python Pillow
 ```
 
-### Step 3: Install the Intel RealSense ROS 2 Wrapper
+### Note on NanoOWL
 
-If you haven't already installed the official RealSense drivers, you will need the `realsense2_camera` package to publish the aligned depth topics:
+This pipeline assumes you have already installed and built NVIDIA's **NanoOWL** and generated the TensorRT engine (`owlvit-base-patch32-image-encoder.engine`). If you have not, follow the official NVIDIA NanoOWL repository instructions to build the engine for your specific GPU before running this node.
+
+---
+
+## ⚙️ 2. Configuration (CRITICAL)
+
+Because this setup relies on Isaac ROS and NVBlox launch files, you **must** ensure the RealSense camera is publishing an aligned depth stream.
+
+1. Navigate to your `nvblox_examples_bringup` config directory.
+2. Open both `realsense_emitter_flashing.yaml` and `realsense_emitter_on.yaml`.
+3. Locate the `camera0` parameters and ensure `align_depth.enable` is set to `true`:
+
+```yaml
+camera0:
+  ros__parameters:
+    align_depth:
+      enable: true
+```
+
+> If this is set to `false`, the locator node will wait indefinitely for the `/camera0/aligned_depth_to_color/image_raw` topic.
+
+---
+
+## 🚀 3. Building the Workspace
+
+1. Place `nanoowl_node.py` and `object_locator_node.py` into the `src` folder of your ROS 2 Python package.
+
+2. Ensure they are marked as executable:
 
 ```bash
-sudo apt install ros-$ROS_DISTRO-realsense2-camera
+chmod +x nanoowl_node.py
+chmod +x object_locator_node.py
 ```
 
-### Step 4: Launching the RealSense (Crucial)
+3. Update your `setup.py` entry points so ROS 2 knows how to run them:
 
-When you spin up your camera, you must tell the RealSense wrapper to align the depth stream to the color stream. If you skip this, the 2D pixel coordinates from NanoOWL will not match the physical world.
+```python
+entry_points={
+    'console_scripts': [
+        'nanoowl_node = your_package_name.nanoowl_node:main',
+        'object_locator_node = your_package_name.object_locator_node:main',
+    ],
+},
+```
 
-Launch the camera by passing the `align_depth.enable` flag:
+4. Navigate to the root of your `colcon_ws` and build:
 
 ```bash
-ros2 launch realsense2_camera rs_launch.py align_depth.enable:=true
+colcon build --symlink-install
+source install/setup.bash
 ```
 
-### Step 5: Run the Pipeline
+---
 
-1. Start the NanoOWL node (ensure it is publishing to `/nanoowl/detections`).
-2. Start the spatial locator node:
+## 🏃 4. Running the Pipeline
+
+You will need three separate terminal windows. Make sure to source your workspace in each one: `source install/setup.bash`.
+
+**Terminal 1: Launch the Cameras & VSLAM**
+
+Run your custom NVBlox/RealSense launch file.
 
 ```bash
-python3 object_locator_node.py
+ros2 launch <your_launch_package> <your_launch_file>.py
 ```
+
+**Terminal 2: Start NanoOWL**
+
+This node subscribes to the RealSense color stream using the `sensor_data` QoS profile and publishes 2D bounding boxes.
+
+```bash
+ros2 run <your_package_name> nanoowl_node
+```
+
+**Terminal 3: Start the Spatial Locator**
+
+This node subscribes to the NanoOWL detections, the RealSense depth stream, and the camera info. It calculates the 3D position and uses `tf2` to print the absolute map coordinates.
+
+```bash
+ros2 run <your_package_name> object_locator_node
+```
+
+---
+
+## 🔍 Troubleshooting
+
+- **No output from Locator Node?** Check if the depth topic exists: `ros2 topic hz /camera0/aligned_depth_to_color/image_raw`. If it reports no new messages, double-check your YAML config from Step 2.
+- **TF2 Transform Exception?** Ensure your VSLAM system is actively publishing the transform tree from `map` → `camera0_color_optical_frame`. Verify by running `ros2 run tf2_tools view_frames`.
+- **NanoOWL Crashing?** Verify that your TensorRT engine path in `nanoowl_node.py` correctly points to where you generated your `.engine` file.
