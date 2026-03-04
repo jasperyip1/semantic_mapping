@@ -289,7 +289,6 @@ Choose one of the two launch modes below:
 ```bash
 ros2 launch nvblox_examples_bringup realsense_example.launch.py \
   run_rviz:=True run_foxglove:=False \
-  enable_imu_fusion:=False \
   voxel_size:=0.1
 ```
 
@@ -302,7 +301,6 @@ ros2 launch nvblox_examples_bringup realsense_example.launch.py \
 ```bash
 ros2 launch nvblox_examples_bringup realsense_example.launch.py \
   run_rviz:=False run_foxglove:=True \
-  enable_imu_fusion:=False \
   layer_streamer_bandwidth_limit_mbps:=30 \
   voxel_size:=0.1
 ```
