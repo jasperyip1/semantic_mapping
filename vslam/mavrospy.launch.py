@@ -1,7 +1,6 @@
-import os
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.substitutions import LaunchConfiguration, TextSubstitution
+from launch.substitutions import LaunchConfiguration, TextSubstitution, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 from launch.launch_description_sources import AnyLaunchDescriptionSource
@@ -24,8 +23,12 @@ def generate_launch_description():
     # Define the path to the mavrospy executable
     mavrospy_executable = [LaunchConfiguration('pattern'), TextSubstitution(text="_py")]
 
-    # Path to the px4.launch file in MAVROS and PX4-Autopilot
-    px4_launch_path = os.path.expanduser('~/ros2_ws/install/mavros/share/mavros/launch/px4.launch')
+    # Dynamically find the system-installed MAVROS package and px4.launch file
+    px4_launch_path = PathJoinSubstitution([
+        FindPackageShare('mavros'),
+        'launch',
+        'px4.launch'
+    ])
 
     # Launch px4.launch with the fcu_url argument
     mavros_node = IncludeLaunchDescription(
