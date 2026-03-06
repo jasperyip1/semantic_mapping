@@ -2,12 +2,12 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, CameraInfo
 from vision_msgs.msg import Detection2DArray
-from geometry_msgs.msg import PointStamped # NEW: Used for holding 3D coordinates
+from geometry_msgs.msg import PointStamped 
 from cv_bridge import CvBridge
 import image_geometry
 import numpy as np
 
-# NEW: tf2 imports for coordinate transformations
+# tf2 imports for coordinate transformations
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
@@ -22,25 +22,24 @@ class ObjectLocatorNode(Node):
         self.latest_depth_img = None
         self.camera_info_received = False
 
-        # --- NEW: Initialize tf2 Buffer and Listener ---
-        # The buffer stores a rolling history of the robot's VSLAM movements
+        # Initialize tf2 Buffer and Listener
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         
         # Define the absolute frame you want to lock the object to
-        # VSLAM typically uses 'map' or 'odom'. Check your VSLAM tf tree!
         self.target_world_frame = 'map' 
-        # -----------------------------------------------
 
+        # UPDATED: Topic changed to /camera0/
         self.info_sub = self.create_subscription(
             CameraInfo,
-            '/camera/color/camera_info', 
+            '/camera0/color/camera_info', 
             self.info_callback,
             10)
 
+        # UPDATED: Topic changed to /camera0/
         self.depth_sub = self.create_subscription(
             Image,
-            '/camera/aligned_depth_to_color/image_raw',
+            '/camera0/aligned_depth_to_color/image_raw',
             self.depth_callback,
             10)
 
@@ -93,26 +92,21 @@ class ObjectLocatorNode(Node):
             median_depth_mm = np.median(valid_depths)
             z_meters = float(median_depth_mm) / 1000.0
 
+            
             ray_normalized = self.camera_model.projectPixelTo3dRay((u, v))
             x_meters = ray_normalized[0] * z_meters
             y_meters = ray_normalized[1] * z_meters
 
-            # --- NEW: TF2 Transformation Logic ---
-            
-            # 1. Create a PointStamped in the camera's local coordinate frame
+            # TF2 Transformation Logic
             point_camera = PointStamped()
-            # CRITICAL: We use the timestamp from the incoming detection message. 
-            # This tells tf2 to look up where the robot was in the past when the picture was snapped.
             point_camera.header.stamp = msg.header.stamp
-            point_camera.header.frame_id = msg.header.frame_id # Usually 'camera_color_optical_frame'
+            point_camera.header.frame_id = msg.header.frame_id 
             
             point_camera.point.x = x_meters
             point_camera.point.y = y_meters
             point_camera.point.z = z_meters
 
             try:
-                # 2. Ask the tf buffer for the transform from the camera to the map
-                # timeout ensures we don't wait forever if the tree is broken
                 transform = self.tf_buffer.lookup_transform(
                     self.target_world_frame,
                     point_camera.header.frame_id,
@@ -120,10 +114,8 @@ class ObjectLocatorNode(Node):
                     rclpy.duration.Duration(seconds=0.1) 
                 )
 
-                # 3. Apply the matrix math to transform the point
                 point_world = tf2_geometry_msgs.do_transform_point(point_camera, transform)
 
-                # Output the absolute result!
                 self.get_logger().info(
                     f"\n--- ABSOLUTE {class_id.upper()} LOCATION ---\n"
                     f"Frame: {self.target_world_frame}\n"
