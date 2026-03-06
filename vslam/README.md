@@ -8,6 +8,8 @@ This workflow bridges the NVIDIA perception stack (Isaac ROS VSLAM) with the fli
 export ISAAC_ROS_WS=/ssd/workspaces/vslam_only
 ```
 
+Change SERIAL7_OPTIONS to 1024 to stop mavlink forward to/from Ground Control Station
+
 ---
 
 ## Step 1: Start the Perception Stack (Inside Docker)
