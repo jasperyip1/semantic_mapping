@@ -4,6 +4,10 @@ This guide is a direct continuation of the **Semantic Mapping — Jetson Orin Na
 
 This workflow bridges the NVIDIA perception stack (Isaac ROS VSLAM) with the flight controller via MAVROS.
 
+```
+export ISAAC_ROS_WS=/ssd/workspaces/vslam_only
+```
+
 ---
 
 ## Step 1: Start the Perception Stack (Inside Docker)
