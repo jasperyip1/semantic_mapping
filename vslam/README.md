@@ -7,6 +7,9 @@ This workflow bridges the NVIDIA perception stack (Isaac ROS VSLAM) with the fli
 ```
 export ISAAC_ROS_WS=/ssd/workspaces/vslam_only
 ```
+```
+nano ~/.bashrc
+```
 
 Change SERIAL7_OPTIONS to 1024 to stop mavlink forward to/from Ground Control Station
 
