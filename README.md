@@ -202,8 +202,8 @@ rosdep update
 rosdep install -i -r \
   --from-paths /workspaces/isaac_ros-dev/src/isaac_ros_nvblox/ \
   --from-paths /workspaces/isaac_ros-dev/src/realsense-ros/ \
-  --rosdistro humble -y
-  --skip-keys="librealsense2"
+  --rosdistro humble -y \
+  --skip-keys "librealsense2 librealsense2-dev ros-humble-librealsense2"
 ```
 
 ---
