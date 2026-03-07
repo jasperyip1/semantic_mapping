@@ -244,7 +244,7 @@ def generate_launch_description() -> LaunchDescription:
         ExecuteProcess(
             # NOTE: You may need to use the absolute path (e.g., '/workspaces/isaac_ros-dev/semantic_mapping/nanoowl/nanoowl.py') 
             # if the relative path below cannot be found when you run the launch command.
-            cmd=['python3', 'nanoowl/nanoowl.py'], 
+            cmd=['python3', '/workspaces/isaac_ros-dev/semantic_mapping/nanoowl/nanoowl_node.py'], 
             output='screen'
         )
     )
