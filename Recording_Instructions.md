@@ -151,10 +151,13 @@ Expected output:
 
 ### B3 — Terminal 2: Launch Nvblox and Play the Bag
 
-This single command launches Nvblox, RViz, and plays back the bag all at once. Replace the `rosbag` path with the path to your own recording folder.
+This single command launches Nvblox, RViz, and plays back the bag all at once. Replace the `rosbag` path with the path to your own recording folder. Quickly switch nvblox voxels to nvblox mesh.
 
 ```bash
-ros2 bag play /workspaces/semantic_mapping/map_bag_1/map_bag_1.db3 --start-offset 0
+ros2 launch nvblox_examples_bringup realsense_example.launch.py \
+  run_rviz:=True run_foxglove:=False \
+  voxel_size:=0.1 \
+  rosbag:=map_bag_1
 ```
 
 As the bag plays, Terminal 1 will log each incoming batch of vertices:
