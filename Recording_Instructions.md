@@ -24,20 +24,7 @@ The `realsense_splitter` node is NVIDIA's required middleware for RealSense data
 
 ---
 
-### A1 — Terminal 1: Launch Visual SLAM
-
-This starts the RealSense driver and NVIDIA's Visual SLAM, which tracks the camera's position in 3D space. Everything else depends on this running first.
-
-```bash
-source install/setup.bash
-ros2 launch isaac_ros_visual_slam isaac_ros_visual_slam_realsense.launch.py
-```
-
-Wait until RViz shows the camera pose is tracking before moving on.
-
----
-
-### A2 — Terminal 2: Launch Nvblox
+### A1 — Terminal 2: Launch Nvblox
 
 This starts the 3D mapping engine that consumes the camera's depth stream and builds the mesh you see in RViz.
 
@@ -52,19 +39,18 @@ Wait until the mesh begins appearing in RViz before starting the recording.
 
 ---
 
-### A3 — Terminal 3: Record the Bag
+### A2 — Terminal 3: Record the Bag
 
 Once everything is green in RViz, start recording. **Recording the right topics is critical** — if `/tf` or `/tf_static` are missing, the bag will be unusable for mapping during playback.
 
 ```bash
 source install/setup.bash
 ros2 bag record \
-  /camera/realsense_splitter_node/output/depth \
-  /camera/depth/camera_info \
-  /camera/color/image_raw \
   /tf \
   /tf_static \
-  -o my_classroom_recording
+  /camera/depth/image_rect_raw \
+  /camera/depth/camera_info \
+  -o map_bag_1
 ```
 
 > **Tip:** Walk slowly and steadily. If the camera motion blurs, Visual SLAM is far more likely to fail during playback with a `success=False` error, because the geometry becomes too inconsistent to reconstruct.
@@ -168,12 +154,8 @@ Expected output:
 This single command launches Nvblox, RViz, and plays back the bag all at once. Replace the `rosbag` path with the path to your own recording folder.
 
 ```bash
-source install/setup.bash
-ros2 launch nvblox_examples_bringup realsense_example.launch.py \
-  rosbag:=/workspaces/isaac_ros-dev/my_classroom_recording_3
+ros2 bag play /workspaces/semantic_mapping/map_bag_1/map_bag_1.db3 --start-offset 0
 ```
-
-> **Note:** Pass the **folder path**, not a `.db3` file. The launch file finds the bag file inside automatically.
 
 As the bag plays, Terminal 1 will log each incoming batch of vertices:
 ```
@@ -184,7 +166,7 @@ As the bag plays, Terminal 1 will log each incoming batch of vertices:
 
 ---
 
-### B5 — Save the File
+### B4 — Save the File
 
 When the bag finishes playing, go back to **Terminal 1** and press **Ctrl+C**.
 
@@ -196,7 +178,7 @@ The script will immediately save everything it accumulated:
 
 ---
 
-### B6 — Transfer the File to the Host Desktop
+### B5 — Transfer the File to the Host Desktop
 
 Open a terminal **on the Jetson host** (outside the Docker container) and run:
 
