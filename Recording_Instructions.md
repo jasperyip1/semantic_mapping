@@ -52,6 +52,18 @@ ros2 bag record \
   /camera/depth/camera_info \
   -o map_bag_1
 ```
+```bash
+source install/setup.bash
+ros2 bag record \
+  /camera0/realsense_splitter_node/output/depth \
+  /camera0/depth/camera_info \
+  /camera0/color/image_raw \
+  /camera0/color/camera_info \
+  /tf \
+  /tf_static \
+  /visual_slam/tracking/odometry \
+  -o classroom_map_complete
+```
 
 > **Tip:** Walk slowly and steadily. If the camera motion blurs, Visual SLAM is far more likely to fail during playback with a `success=False` error, because the geometry becomes too inconsistent to reconstruct.
 
