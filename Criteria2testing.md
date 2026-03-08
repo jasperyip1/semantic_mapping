@@ -163,25 +163,17 @@ Expected output:
 
 ---
 
-### B3 — Terminal 2: Launch Nvblox for Playback
+### B3 — Terminal 2: Launch Nvblox and Play the Bag
+
+This single command launches Nvblox, RViz, and plays back the bag all at once. Replace the `rosbag` path with the path to your own recording folder.
 
 ```bash
 source install/setup.bash
 ros2 launch nvblox_examples_bringup realsense_example.launch.py \
-  run_rviz:=True run_foxglove:=False \
-  voxel_size:=0.1
+  rosbag:=/workspaces/isaac_ros-dev/my_classroom_recording_3
 ```
 
----
-
-### B4 — Terminal 3: Play the Bag
-
-```bash
-source install/setup.bash
-ros2 bag play /path/to/gym_classroom_map_bag_1_0.db3 --start-offset 0
-```
-
-Replace `/path/to/` with the actual path to your bag file.
+> **Note:** Pass the **folder path**, not a `.db3` file. The launch file finds the bag file inside automatically.
 
 As the bag plays, Terminal 1 will log each incoming batch of vertices:
 ```
@@ -224,10 +216,9 @@ docker cp $(docker ps -q):/tmp/mesh_from_topic.ply ~/Desktop/mesh_from_topic.ply
 | 2 | Launch Nvblox | `realsense_example.launch.py` |
 | 3 | Record Bag | `ros2 bag record ...` |
 | 4 | Start mesh capture script | `python3 save_mesh.py` |
-| 5 | Launch Nvblox for playback | `realsense_example.launch.py` |
-| 6 | Play back bag | `ros2 bag play ...` |
-| 7 | Save on Ctrl+C | Script auto-saves to `/tmp/mesh_from_topic.ply` |
-| 8 | Transfer to desktop | `docker cp ... ~/Desktop/` |
+| 5 | Launch Nvblox + play bag | `realsense_example.launch.py rosbag:=<path>` |
+| 6 | Save on Ctrl+C | Script auto-saves to `/tmp/mesh_from_topic.ply` |
+| 7 | Transfer to desktop | `docker cp ... ~/Desktop/` |
 
 ---
 
