@@ -46,15 +46,6 @@ Once everything is green in RViz, start recording. **Recording the right topics 
 ```bash
 source install/setup.bash
 ros2 bag record \
-  /tf \
-  /tf_static \
-  /camera/depth/image_rect_raw \
-  /camera/depth/camera_info \
-  -o map_bag_1
-```
-```bash
-source install/setup.bash
-ros2 bag record \
   /camera0/realsense_splitter_node/output/depth \
   /camera0/depth/camera_info \
   /camera0/color/image_raw \
